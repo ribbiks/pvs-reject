@@ -4,37 +4,34 @@ import time
 EPSILON = 0.1
 
 
-def make_ssect_graph(all_portals, print_progress=False):
-    ssect_graph = {}
-    for n in all_portals:
-        if n[0] not in ssect_graph:
-            ssect_graph[n[0]] = []
-        ssect_graph[n[0]].append((n[1], np.array(n[2], dtype='float'), np.array(n[3], dtype='float')))
-        if n[1] not in ssect_graph:
-            ssect_graph[n[1]] = []
-        ssect_graph[n[1]].append((n[0], np.array(n[3], dtype='float'), np.array(n[2], dtype='float')))
-    #
-    portal_cantsee = {}
-    skeys = sorted(ssect_graph.keys())
-    for ssi in skeys:
+def precompute_portal_visibility(ssect_graph, portal_ssects, portal_coords, print_progress=False):
+    n_portals = portal_ssects.shape[0]
+    portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
+    for ssi in range(len(ssect_graph)):
         if print_progress:
             print(f'precomputing portal visibility for subsector {ssi}...')
-        for portal_dat in ssect_graph[ssi]:
-            v1 = portal_dat[2] - portal_dat[1]
-            plane = np.array([-v1[1], v1[0]], dtype='float')
-            mid = (portal_dat[1] + portal_dat[2])/2.
-            for ssj in skeys:
+        for (_, portal_i) in ssect_graph[ssi]:
+            pi_p1 = portal_coords[portal_i,0:2]
+            pi_p2 = portal_coords[portal_i,2:4]
+            v1 = pi_p2 - pi_p1
+            plane = [-v1[1], v1[0]]
+            mid = (pi_p1 + pi_p2)/2.0
+            for ssj in range(len(ssect_graph)):
                 if ssi == ssj:
                     continue
-                for portal_dat2 in ssect_graph[ssj]:
-                    p1 = np.dot(plane, portal_dat2[1] - mid)
-                    if p1 > EPSILON:
+                for (_, portal_j) in ssect_graph[ssj]:
+                    pj_p1 = portal_coords[portal_j,0:2]
+                    pj_p2 = portal_coords[portal_j,2:4]
+                    test_p1 = np.dot(plane, pj_p1 - mid)
+                    if test_p1 > EPSILON:
                         continue
-                    p2 = np.dot(plane, portal_dat2[2] - mid)
-                    if p2 > EPSILON:
+                    test_p2 = np.dot(plane, pj_p2 - mid)
+                    if test_p2 > EPSILON:
                         continue
-                    portal_cantsee[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
-    return (ssect_graph, portal_cantsee)
+                    ind = (portal_i*n_portals + portal_j) // 8
+                    bit = (portal_i*n_portals + portal_j) % 8
+                    portal_cantsee[ind] += 1 << bit
+    return portal_cantsee
 
 
 def clip_target(tar, plane, plane_dist):
@@ -86,43 +83,43 @@ def clip_to_separators(p_source, p_pass, p_target):
     return out_target
 
 
-def PVS_DFS(ssect_graph, starting_node, portal_cantsee={}):
+def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}):
+    n_portals = portal_coords.shape[0]
     visited = {}
-    leaves = {}
     stack = [(starting_node, [], None)]
     while stack:
         (node, path, previous_target) = stack.pop()
-        #print(node, len(path), [n[0] for n in path], previous_target)
+        #print(node, len(path), path, previous_target)
         new_target = None
         if len(path) >= 3:
-            portal_source = [path[0][1], path[0][2]]
+            portal_source = [portal_coords[path[0][1],0:2], portal_coords[path[0][1],2:4]]
             if previous_target is None:
-                portal_pass = [path[-2][1], path[-2][2]]
+                portal_pass = [portal_coords[path[-2][1],0:2], portal_coords[path[-2][1],2:4]]
             else:
                 portal_pass = previous_target
-            portal_target = [path[-1][1], path[-1][2]]
+            portal_target = [portal_coords[path[-1][1],0:2], portal_coords[path[-1][1],2:4]]
             new_target = clip_to_separators(portal_source, portal_pass, portal_target)
             if new_target is None:
-                leaves[node] = True
                 continue
         visited[node] = True
-        if node in ssect_graph: # graph can be missing the node if it has no neighbors
-            path_nodes = {n[0]:True for n in path}
-            for neighbor in [n for n in ssect_graph[node] if n[0] not in path_nodes]:
-                all_cansee = True
-                if len(path) >= 3:
-                    for i in range(len(path)-3):
-                        if (path[i][0], path[i+1][0], path[-1][0], neighbor[0]) in portal_cantsee:
-                            all_cansee = False
-                            break
-                if all_cansee:
-                    stack.append((neighbor[0], path+[neighbor], new_target))
+        path_nodes = {n[0]:True for n in path}
+        for neighbor in [n for n in ssect_graph[node] if n[0] not in path_nodes]:
+            all_cansee = True
+            portal_j = neighbor[1]
+            for (_, portal_i) in path:
+                ind = (portal_i*n_portals + portal_j) // 8
+                bit = (portal_i*n_portals + portal_j) % 8
+                if portal_cantsee[ind] & (1 << bit):
+                    all_cansee = False
+                    break
+            if all_cansee:
+                stack.append((neighbor[0], path+[neighbor], new_target))
     return sorted(visited.keys())
 
 
-def PVS_DFS_parallel(ssect_graph, list_of_starting_nodes, results_dict, portal_cantsee={}, print_progress=False):
+def PVS_DFS_parallel(ssect_graph, portal_coords, list_of_starting_nodes, results_dict, portal_cantsee={}, print_progress=False):
     for starting_node in list_of_starting_nodes:
         tt = time.perf_counter()
-        results_dict[starting_node] = PVS_DFS(ssect_graph, starting_node, portal_cantsee=portal_cantsee)
+        results_dict[starting_node] = PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=portal_cantsee)
         if print_progress:
             print(f'subsector {starting_node}: {int(time.perf_counter() - tt)} sec')

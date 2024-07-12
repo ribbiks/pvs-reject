@@ -120,7 +120,7 @@ def get_vertexes(map_data):
     vert_data = map_data[null_pad('VERTEXES')]
     for offset in range(0,len(vert_data),4):
         (x, y) = unpack('hh', vert_data[offset:offset+4])
-        normal_verts.append((x, y))
+        normal_verts.append([x, y])
     return normal_verts
 
 
@@ -129,7 +129,7 @@ def get_gl_verts(map_data):
     vert_data = map_data[null_pad('GL_VERT')]
     for offset in range(4,len(vert_data),8):
         (x, y) = unpack('ii', vert_data[offset:offset+8])
-        gl_verts.append((x, y))
+        gl_verts.append([x, y])
     return gl_verts
 
 
@@ -149,12 +149,12 @@ def get_gl_segs_with_coordinates(map_data, normal_verts, gl_verts):
         (start_vertex, end_vertex, linedef, side, partner_seg) = unpack('IIHHI', segs_data[offset:offset+16])
         if start_vertex >> 31:
             start_coords = gl_verts[start_vertex - (1 << 31)]
-            start_coords = (start_coords[0]/0x10000, start_coords[1]/0x10000)
+            start_coords = [start_coords[0]/0x10000, start_coords[1]/0x10000]
         else:
             start_coords = normal_verts[start_vertex]
         if end_vertex >> 31:
             end_coords = gl_verts[end_vertex - (1 << 31)]
-            end_coords = (end_coords[0]/0x10000, end_coords[1]/0x10000)
+            end_coords = [end_coords[0]/0x10000, end_coords[1]/0x10000]
         else:
             end_coords = normal_verts[end_vertex]
         segs_list.append((start_coords, end_coords, linedef, side, partner_seg))
@@ -201,20 +201,19 @@ def get_portal_segs(segs_list, ssect_list, line_list, side_list):
                 seg_2_sect[ssect[1] + si] = my_sector
             ssect_2_sect[ssi] = my_sector
     #
-    all_portals = {}
+    portal_ssects = []
+    portal_coords = []
     for ssi,ssect in enumerate(ssect_list):
         my_segs = segs_list[ssect[1]:ssect[1]+ssect[0]]
         my_sector = ssect_2_sect[ssi]
         for si,seg in enumerate(my_segs):
             if seg[4] != 0xffffffff:
-                partner_ssect_ind = seg_2_ssect[seg[4]]
-                partner_seg = segs_list[seg[4]]
-                portal_dat = sorted([[seg[3], ssi, seg[0], seg[1]], [partner_seg[3], partner_ssect_ind, partner_seg[0], partner_seg[1]]])
-                portal_dat = (portal_dat[0][1], portal_dat[1][1], portal_dat[0][2], portal_dat[0][3])
-                all_portals[portal_dat] = True
+                partner_ssi = seg_2_ssect[seg[4]]
+                portal_ssects.append([ssi, partner_ssi])
+                portal_coords.append(seg[0] + seg[1])
                 segs_to_plot.append([[seg[0], seg[1]], [0,1,1,1], 0.5])
             else:
                 segs_to_plot.append([[seg[0], seg[1]], [0,1,1,1], 0.5])
-    all_portals = sorted(all_portals.keys())
-    #
-    return (all_portals, ssect_2_sect, segs_to_plot)
+    portal_ssects = np.array(portal_ssects, dtype='<i4')
+    portal_coords = np.array(portal_coords, dtype='float')
+    return (portal_ssects, portal_coords, ssect_2_sect, segs_to_plot)
