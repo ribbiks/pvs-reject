@@ -63,7 +63,7 @@ def main(raw_args=None):
         processes[i].join()
     print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
 
-    reject_out = np.zeros((n_sectors, n_sectors), dtype='<i4') + IS_INVISIBLE
+    reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
     for i in range(n_subsectors):
         si = ssect_2_sect[i]
         for j in results_dict[i]:
@@ -78,7 +78,7 @@ def main(raw_args=None):
         fig = mpl.figure(0,figsize=(10,10))
         Z = reject_out
         X, Y = np.meshgrid(range(0,len(Z[0])+1), range(0,len(Z)+1))
-        mpl.pcolormesh(X, Y, Z, cmap='RdPu', vmin=0, vmax=1)
+        mpl.pcolormesh(X, Y, Z, cmap='binary', vmin=0, vmax=1)
         mpl.axis([0,len(Z[0]),0,len(Z)])
         mpl.gca().invert_yaxis()
         mpl.savefig(f'{OUT_REJECT}.png')

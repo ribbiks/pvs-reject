@@ -15,14 +15,35 @@ MAP_LUMPS = ['THINGS', 'LINEDEFS', 'SIDEDEFS', 'VERTEXES', 'SEGS', 'SSECTORS', '
 MAP_LUMPS = {null_pad(n):True for n in MAP_LUMPS}
 
 
+# reject lump --> 2d numpy array
+def read_reject(fn):
+    f = open(fn,'rb')
+    fr = f.read()
+    f.close()
+    n_sectors = int(np.ceil(np.sqrt(8.0*len(fr)-7.0)))
+    reject_size = len(fr)*8
+    reject = np.zeros((reject_size))
+    for i in range(len(fr)):
+        reject[i*8 + 0] = (fr[i] & 1) >> 0
+        reject[i*8 + 1] = (fr[i] & 2) >> 1
+        reject[i*8 + 2] = (fr[i] & 4) >> 2
+        reject[i*8 + 3] = (fr[i] & 8) >> 3
+        reject[i*8 + 4] = (fr[i] & 16) >> 4
+        reject[i*8 + 5] = (fr[i] & 32) >> 5
+        reject[i*8 + 6] = (fr[i] & 64) >> 6
+        reject[i*8 + 7] = (fr[i] & 128) >> 7
+    reject = reject[:n_sectors*n_sectors] # ignore trailing junk
+    return reject.reshape((n_sectors,n_sectors))
+
+
 # 2d numpy array --> reject lump
 def write_reject(reject, fn):
     bytes_out = []
     total_size = reject.shape[0]*reject.shape[1]
     reject = reject.reshape((total_size))
-    reject = np.hstack((reject, np.zeros((8), dtype='<i4')))
+    reject = np.hstack((reject, np.zeros((8), dtype='bool')))
     for i in range(0,total_size,8):
-        my_byte = 1*reject[i+7] + 2*reject[i+6] + 4*reject[i+5] + 8*reject[i+4] + 16*reject[i+3] + 32*reject[i+2] + 64*reject[i+1] + 128*reject[i]
+        my_byte = 1*reject[i+0] + 2*reject[i+1] + 4*reject[i+2] + 8*reject[i+3] + 16*reject[i+4] + 32*reject[i+5] + 64*reject[i+6] + 128*reject[i+7]
         bytes_out.append(my_byte)
     bytes_out = bytes(bytes_out)
     with open(fn,'wb') as f:
