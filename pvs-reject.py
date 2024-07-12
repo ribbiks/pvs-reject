@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 import argparse
 import copy
-import multiprocessing
 import numpy as np
 import time
 
-from source.pvs_func import precompute_portal_visibility, PVS_DFS_parallel
+from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
+
+from source.pvs_func import precompute_portal_visibility, PVS_DFS
 from source.wad_func import *
+
+PPV_BATCHSIZE = 50
 
 
 def main(raw_args=None):
@@ -42,40 +46,51 @@ def main(raw_args=None):
     ssect_list = get_gl_subsectors(map_data)
     segs_list = get_gl_segs_with_coordinates(map_data, normal_verts, gl_verts)
     #
+    (portal_ssects, portal_coords, ssect_2_sect, segs_to_plot) = get_portal_segs(segs_list, ssect_list, line_list, side_list)
+
+    # cleanup
     n_sectors = len(sect_list)
     n_subsectors = len(ssect_list)
-
-    (portal_ssects, portal_coords, ssect_2_sect, segs_to_plot) = get_portal_segs(segs_list, ssect_list, line_list, side_list)
     n_portals = portal_ssects.shape[0]
+    del map_data
+    del line_list
+    del side_list
+    del sect_list
+    del normal_verts
+    del gl_verts
+    del ssect_list
+    del segs_list
     print(f'{n_sectors} sectors / {n_subsectors} subsectors / {n_portals} portals')
 
     ssect_graph = [[] for n in range(n_subsectors)]
     for i in range(portal_ssects.shape[0]):
         ssect_graph[portal_ssects[i,0]].append((portal_ssects[i,1], i))
 
-    portal_cantsee = precompute_portal_visibility(ssect_graph, portal_ssects, portal_coords, PRINT_PROGRESS)
+    tt = time.perf_counter()
+    portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
+    for ssi_start in range(0, n_subsectors, PPV_BATCHSIZE):
+        my_ssi = range(ssi_start, min(ssi_start+PPV_BATCHSIZE, n_subsectors))
+        with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+            cantsee_result = list(executor.map(precompute_portal_visibility, repeat(ssect_graph), repeat(portal_coords), my_ssi, repeat(PRINT_PROGRESS)))
+        for ib_list in cantsee_result:
+            for i in range(0,len(ib_list),2):
+                portal_cantsee[ib_list[i]] += ib_list[i+1]
+        del cantsee_result
+    print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
 
     tt = time.perf_counter()
-    manager = multiprocessing.Manager()
-    results_dict = manager.dict()
-    processes = []
-    for i in range(NUM_PROCESSES):
-        my_inds = range(i, n_subsectors, NUM_PROCESSES)
-        p = multiprocessing.Process(target=PVS_DFS_parallel, args=(ssect_graph, portal_coords, my_inds, results_dict, portal_cantsee, PRINT_PROGRESS))
-        processes.append(p)
-    for i in range(NUM_PROCESSES):
-        processes[i].start()
-    for i in range(NUM_PROCESSES):
-        processes[i].join()
-    print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
-
+    with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+        pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
     reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
     for i in range(n_subsectors):
         si = ssect_2_sect[i]
-        for j in results_dict[i]:
+        for j in pvs_result[i]:
             sj = ssect_2_sect[j]
             reject_out[si,sj] = IS_VISIBLE
             reject_out[sj,si] = IS_VISIBLE
+    del pvs_result
+    print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
+
     write_reject(reject_out, OUT_REJECT)
 
     #

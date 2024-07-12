@@ -4,34 +4,35 @@ import time
 EPSILON = 0.1
 
 
-def precompute_portal_visibility(ssect_graph, portal_ssects, portal_coords, print_progress=False):
-    n_portals = portal_ssects.shape[0]
-    portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
-    for ssi in range(len(ssect_graph)):
-        if print_progress:
-            print(f'precomputing portal visibility for subsector {ssi}...')
-        for (_, portal_i) in ssect_graph[ssi]:
-            pi_p1 = portal_coords[portal_i,0:2]
-            pi_p2 = portal_coords[portal_i,2:4]
-            v1 = pi_p2 - pi_p1
-            plane = [-v1[1], v1[0]]
-            mid = (pi_p1 + pi_p2)/2.0
-            for ssj in range(len(ssect_graph)):
-                if ssi == ssj:
+def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress=False):
+    n_portals = portal_coords.shape[0]
+    tuples_out = []
+    tt = time.perf_counter()
+    for (_, portal_i) in ssect_graph[ssi]:
+        pi_p1 = portal_coords[portal_i,0:2]
+        pi_p2 = portal_coords[portal_i,2:4]
+        v1 = pi_p2 - pi_p1
+        plane = [-v1[1], v1[0]]
+        mid = (pi_p1 + pi_p2)/2.0
+        for ssj in range(len(ssect_graph)):
+            if ssi == ssj:
+                continue
+            for (_, portal_j) in ssect_graph[ssj]:
+                pj_p1 = portal_coords[portal_j,0:2]
+                pj_p2 = portal_coords[portal_j,2:4]
+                test_p1 = np.dot(plane, pj_p1 - mid)
+                if test_p1 > EPSILON:
                     continue
-                for (_, portal_j) in ssect_graph[ssj]:
-                    pj_p1 = portal_coords[portal_j,0:2]
-                    pj_p2 = portal_coords[portal_j,2:4]
-                    test_p1 = np.dot(plane, pj_p1 - mid)
-                    if test_p1 > EPSILON:
-                        continue
-                    test_p2 = np.dot(plane, pj_p2 - mid)
-                    if test_p2 > EPSILON:
-                        continue
-                    ind = (portal_i*n_portals + portal_j) // 8
-                    bit = (portal_i*n_portals + portal_j) % 8
-                    portal_cantsee[ind] += 1 << bit
-    return portal_cantsee
+                test_p2 = np.dot(plane, pj_p2 - mid)
+                if test_p2 > EPSILON:
+                    continue
+                ind = (portal_i*n_portals + portal_j) // 8
+                bit = (portal_i*n_portals + portal_j) % 8
+                tuples_out.append(ind)
+                tuples_out.append(1 << bit)
+    if print_progress:
+        print(f'[precompute_portal_visibility] subsector {ssi}: {int(time.perf_counter() - tt)} sec')
+    return tuples_out
 
 
 def clip_target(tar, plane, plane_dist):
@@ -83,7 +84,8 @@ def clip_to_separators(p_source, p_pass, p_target):
     return out_target
 
 
-def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}):
+def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_progress=False):
+    tt = time.perf_counter()
     n_portals = portal_coords.shape[0]
     visited = {}
     stack = [(starting_node, [], None)]
@@ -114,12 +116,6 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}):
                     break
             if all_cansee:
                 stack.append((neighbor[0], path+[neighbor], new_target))
+    if print_progress:
+        print(f'[PVS_DFS] subsector {starting_node}: {int(time.perf_counter() - tt)} sec')
     return sorted(visited.keys())
-
-
-def PVS_DFS_parallel(ssect_graph, portal_coords, list_of_starting_nodes, results_dict, portal_cantsee={}, print_progress=False):
-    for starting_node in list_of_starting_nodes:
-        tt = time.perf_counter()
-        results_dict[starting_node] = PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=portal_cantsee)
-        if print_progress:
-            print(f'subsector {starting_node}: {int(time.perf_counter() - tt)} sec')
