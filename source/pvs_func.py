@@ -4,7 +4,7 @@ import time
 EPSILON = 0.1
 
 
-def make_ssect_graph(all_portals):
+def make_ssect_graph(all_portals, print_progress=False):
     ssect_graph = {}
     for n in all_portals:
         if n[0] not in ssect_graph:
@@ -15,32 +15,10 @@ def make_ssect_graph(all_portals):
         ssect_graph[n[1]].append((n[0], np.array(n[3], dtype='float'), np.array(n[2], dtype='float')))
     #
     portal_cantsee = {}
-    ####skeys = sorted(ssect_graph.keys())
-    ####for ssi in skeys:
-    ####    for portal_dat in ssect_graph[ssi]:
-    ####        v1 = portal_dat[2] - portal_dat[1]
-    ####        plane = np.array([-v1[1], v1[0]], dtype='float')
-    ####        mid = (portal_dat[1] + portal_dat[2])/2.
-    ####        for ssj in skeys:
-    ####            if ssi == ssj:
-    ####                continue
-    ####            for portal_dat2 in ssect_graph[ssj]:
-    ####                p1 = np.dot(plane, portal_dat2[1] - mid)
-    ####                if p1 > EPSILON:
-    ####                    continue
-    ####                p2 = np.dot(plane, portal_dat2[2] - mid)
-    ####                if p2 > EPSILON:
-    ####                    continue
-    ####                portal_cantsee[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
-    return (ssect_graph, portal_cantsee)
-
-
-def precompute_portal_visibility(ssect_graph, my_inds, results_dict, print_progress=False):
     skeys = sorted(ssect_graph.keys())
-    for ssi in my_inds:
-        if ssi not in ssect_graph:
-            continue
-        tt = time.perf_counter()
+    for ssi in skeys:
+        if print_progress:
+            print(f'precomputing portal visibility for subsector {ssi}...')
         for portal_dat in ssect_graph[ssi]:
             v1 = portal_dat[2] - portal_dat[1]
             plane = np.array([-v1[1], v1[0]], dtype='float')
@@ -55,9 +33,8 @@ def precompute_portal_visibility(ssect_graph, my_inds, results_dict, print_progr
                     p2 = np.dot(plane, portal_dat2[2] - mid)
                     if p2 > EPSILON:
                         continue
-                    results_dict[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
-        if print_progress:
-            print(f'subsector {ssi}: {int(time.perf_counter() - tt)} sec')
+                    portal_cantsee[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
+    return (ssect_graph, portal_cantsee)
 
 
 def clip_target(tar, plane, plane_dist):
