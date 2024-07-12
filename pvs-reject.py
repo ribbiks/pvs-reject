@@ -56,8 +56,8 @@ def main(raw_args=None):
     portal_cantsee = manager.dict()
     processes = []
     for i in range(NUM_PROCESSES):
-        my_inds = range(i,n_portals,NUM_PROCESSES)
-        p = multiprocessing.Process(target=precompute_portal_visibility, args=(all_portals, my_inds, portal_cantsee, PRINT_PROGRESS))
+        my_inds = range(i, n_subsectors, NUM_PROCESSES)
+        p = multiprocessing.Process(target=precompute_portal_visibility, args=(ssect_graph, my_inds, portal_cantsee, PRINT_PROGRESS))
         processes.append(p)
     for i in range(NUM_PROCESSES):
         processes[i].start()
@@ -71,7 +71,7 @@ def main(raw_args=None):
     results_dict = manager.dict()
     processes = []
     for i in range(NUM_PROCESSES):
-        my_inds = range(i,n_subsectors,NUM_PROCESSES)
+        my_inds = range(i, n_subsectors, NUM_PROCESSES)
         p = multiprocessing.Process(target=PVS_DFS_parallel, args=(ssect_graph, my_inds, results_dict, portal_cantsee, PRINT_PROGRESS))
         processes.append(p)
     for i in range(NUM_PROCESSES):
