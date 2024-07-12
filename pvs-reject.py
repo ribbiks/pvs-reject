@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 import argparse
+import copy
 import multiprocessing
 import numpy as np
 import time
 
-from source.pvs_func import make_ssect_graph, PVS_DFS_parallel
+from source.pvs_func import make_ssect_graph, precompute_portal_visibility, PVS_DFS_parallel
 from source.wad_func import *
 
 PLOT_BUFF = 500
@@ -28,7 +29,6 @@ def main(raw_args=None):
     PRINT_PROGRESS = args.progress
 
     if MAKE_PLOTS:
-        import copy
         import matplotlib.pyplot as mpl
         from matplotlib import collections as mc
 
@@ -46,15 +46,32 @@ def main(raw_args=None):
     n_subsectors = len(ssect_list)
 
     (all_portals, ssect_2_sect, segs_to_plot) = get_portal_segs(segs_list, ssect_list, line_list, side_list)
+    n_portals = len(all_portals)
+    print(f'{n_sectors} sectors / {n_subsectors} subsectors / {n_portals} portals')
 
     (ssect_graph, portal_cantsee) = make_ssect_graph(all_portals)
+
+    tt = time.perf_counter()
+    manager = multiprocessing.Manager()
+    portal_cantsee = manager.dict()
+    processes = []
+    for i in range(NUM_PROCESSES):
+        my_inds = range(i,n_portals,NUM_PROCESSES)
+        p = multiprocessing.Process(target=precompute_portal_visibility, args=(all_portals, my_inds, portal_cantsee, PRINT_PROGRESS))
+        processes.append(p)
+    for i in range(NUM_PROCESSES):
+        processes[i].start()
+    for i in range(NUM_PROCESSES):
+        processes[i].join()
+    print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
+    portal_cantsee = {k:True for k in portal_cantsee.keys()}
 
     tt = time.perf_counter()
     manager = multiprocessing.Manager()
     results_dict = manager.dict()
     processes = []
     for i in range(NUM_PROCESSES):
-        my_inds = list(range(i,n_subsectors,NUM_PROCESSES))
+        my_inds = range(i,n_subsectors,NUM_PROCESSES)
         p = multiprocessing.Process(target=PVS_DFS_parallel, args=(ssect_graph, my_inds, results_dict, portal_cantsee, PRINT_PROGRESS))
         processes.append(p)
     for i in range(NUM_PROCESSES):

@@ -15,22 +15,50 @@ def make_ssect_graph(all_portals):
         ssect_graph[n[1]].append((n[0], np.array(n[3], dtype='float'), np.array(n[2], dtype='float')))
     #
     portal_cantsee = {}
-    skeys = sorted(ssect_graph.keys())
-    for ssi in skeys:
-        for portal_dat in ssect_graph[ssi]:
-            v1 = portal_dat[2] - portal_dat[1]
-            plane = np.array([-v1[1], v1[0]], dtype='float')
-            mid = (portal_dat[1] + portal_dat[2])/2.
-            for ssj in skeys:
-                if ssi == ssj:
-                    continue
-                for portal_dat2 in ssect_graph[ssj]:
-                    p1 = np.dot(plane, portal_dat2[1] - mid)
-                    p2 = np.dot(plane, portal_dat2[2] - mid)
-                    if p1 < EPSILON and p2 < EPSILON:
-                        portal_cantsee[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
-    #
+    ####skeys = sorted(ssect_graph.keys())
+    ####for ssi in skeys:
+    ####    for portal_dat in ssect_graph[ssi]:
+    ####        v1 = portal_dat[2] - portal_dat[1]
+    ####        plane = np.array([-v1[1], v1[0]], dtype='float')
+    ####        mid = (portal_dat[1] + portal_dat[2])/2.
+    ####        for ssj in skeys:
+    ####            if ssi == ssj:
+    ####                continue
+    ####            for portal_dat2 in ssect_graph[ssj]:
+    ####                p1 = np.dot(plane, portal_dat2[1] - mid)
+    ####                if p1 > EPSILON:
+    ####                    continue
+    ####                p2 = np.dot(plane, portal_dat2[2] - mid)
+    ####                if p2 > EPSILON:
+    ####                    continue
+    ####                portal_cantsee[(ssi, portal_dat[0], ssj, portal_dat2[0])] = True
     return (ssect_graph, portal_cantsee)
+
+
+def precompute_portal_visibility(all_portals, my_inds, results_dict, print_progress=False):
+    for i in my_inds:
+        tt = time.perf_counter()
+        for portal_1 in [all_portals[i], (all_portals[i][1], all_portals[i][0], all_portals[i][3], all_portals[i][2])]:
+            (from_1, to_1) = (portal_1[0], portal_1[1])
+            v1 = np.array(portal_1[2])
+            v2 = np.array(portal_1[3])
+            v3 = v2 - v1
+            plane = np.array([-v3[1], v3[0]], dtype='float')
+            mid = (v1 + v2)/2.0
+            for j in range(len(all_portals)):
+                if i == j:
+                    continue
+                for portal_2 in [all_portals[j], (all_portals[j][1], all_portals[j][0], all_portals[j][3], all_portals[j][2])]:
+                    (from_2, to_2) = (portal_2[0], portal_2[1])
+                    p1 = np.dot(plane, np.array(portal_2[2]) - mid)
+                    if p1 > EPSILON:
+                        continue
+                    p2 = np.dot(plane, np.array(portal_2[3]) - mid)
+                    if p2 > EPSILON:
+                        continue
+                    results_dict[(from_1, to_1, from_2, to_2)] = True
+        if print_progress:
+            print(f'portal {i}: {int(time.perf_counter() - tt)} sec')
 
 
 def clip_target(tar, plane, plane_dist):
