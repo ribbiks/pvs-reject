@@ -18,7 +18,9 @@ def main(raw_args=None):
     parser.add_argument('-i', type=str, required=True,  metavar='input.wad',  help="* Input WAD")
     parser.add_argument('-m', type=str, required=True,  metavar='MAP01',      help="* Map name")
     parser.add_argument('-r', type=str, required=True,  metavar='REJECT.lmp', help="* Output reject table lmp")
+    parser.add_argument('-v', type=str, required=False, metavar='vis.npz',    help="Load precomputed visibility matrix", default='')
     parser.add_argument('-p', type=int, required=False, metavar='4',          help="Number of processes to use", default=4)
+    parser.add_argument('--save-vis',   required=False, action='store_true',  help="Save precomputed visibility matrix", default=False)
     parser.add_argument('--plot-rej',   required=False, action='store_true',  help="Plot reject (for debugging)", default=False)
     parser.add_argument('--plot-ssect', required=False, action='store_true',  help="Plot subsectors (for debugging)", default=False)
     parser.add_argument('--progress',   required=False, action='store_true',  help="Print PVS progress to console", default=False)
@@ -27,7 +29,9 @@ def main(raw_args=None):
     IN_WAD = args.i
     WHICH_MAP = args.m
     OUT_REJECT = args.r
+    LOAD_VISIBILITY = args.v
     NUM_PROCESSES = args.p
+    SAVE_VISIBILITY = args.save_vis
     PLOT_REJECT = args.plot_rej
     PLOT_SSECT = args.plot_ssect
     PRINT_PROGRESS = args.progress
@@ -66,17 +70,24 @@ def main(raw_args=None):
     for i in range(portal_ssects.shape[0]):
         ssect_graph[portal_ssects[i,0]].append((portal_ssects[i,1], i))
 
-    tt = time.perf_counter()
-    portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
-    for ssi_start in range(0, n_subsectors, PPV_BATCHSIZE):
-        my_ssi = range(ssi_start, min(ssi_start+PPV_BATCHSIZE, n_subsectors))
-        with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-            cantsee_result = list(executor.map(precompute_portal_visibility, repeat(ssect_graph), repeat(portal_coords), my_ssi, repeat(PRINT_PROGRESS)))
-        for ib_list in cantsee_result:
-            for i in range(0,len(ib_list),2):
-                portal_cantsee[ib_list[i]] += ib_list[i+1]
-        del cantsee_result
-    print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
+    if LOAD_VISIBILITY:
+        print('loading precomputed visibility from file...')
+        in_npz = np.load(LOAD_VISIBILITY)
+        portal_cantsee = in_npz['portal_cantsee']
+    else:
+        tt = time.perf_counter()
+        portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
+        for ssi_start in range(0, n_subsectors, PPV_BATCHSIZE):
+            my_ssi = range(ssi_start, min(ssi_start+PPV_BATCHSIZE, n_subsectors))
+            with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+                cantsee_result = list(executor.map(precompute_portal_visibility, repeat(ssect_graph), repeat(portal_coords), my_ssi, repeat(PRINT_PROGRESS)))
+            for ib_list in cantsee_result:
+                for i in range(0,len(ib_list),2):
+                    portal_cantsee[ib_list[i]] += ib_list[i+1]
+            del cantsee_result
+        if SAVE_VISIBILITY:
+            np.savez_compressed(f'{OUT_REJECT}.npz', portal_cantsee=portal_cantsee)
+        print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
 
     tt = time.perf_counter()
     with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
