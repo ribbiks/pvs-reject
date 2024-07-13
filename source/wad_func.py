@@ -205,10 +205,11 @@ def get_portal_segs(segs_list, ssect_list, line_list, side_list):
     portal_coords = []
     for ssi,ssect in enumerate(ssect_list):
         my_segs = segs_list[ssect[1]:ssect[1]+ssect[0]]
-        my_sector = ssect_2_sect[ssi]
+        #my_sector = ssect_2_sect[ssi]
         for si,seg in enumerate(my_segs):
             if seg[4] != 0xffffffff:
                 partner_ssi = seg_2_ssect[seg[4]]
+                #partner_sector = ssect_2_sect[partner_ssi]
                 portal_ssects.append([ssi, partner_ssi])
                 portal_coords.append(seg[0] + seg[1])
                 segs_to_plot.append([[seg[0], seg[1]], [0,1,1,1], 0.5])

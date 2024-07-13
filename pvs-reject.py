@@ -62,13 +62,18 @@ def main(raw_args=None):
     del sect_list
     del normal_verts
     del gl_verts
-    del ssect_list
-    del segs_list
     print(f'{n_sectors} sectors / {n_subsectors} subsectors / {n_portals} portals')
 
     ssect_graph = [[] for n in range(n_subsectors)]
     for i in range(portal_ssects.shape[0]):
         ssect_graph[portal_ssects[i,0]].append((portal_ssects[i,1], i))
+
+    sect_graph = [[] for n in range(n_sectors)]
+    for i in range(portal_ssects.shape[0]):
+        my_sector = ssect_2_sect[portal_ssects[i,0]]
+        partner_sector = ssect_2_sect[portal_ssects[i,1]]
+        if my_sector != partner_sector:
+            sect_graph[my_sector].append((partner_sector, i))
 
     if LOAD_VISIBILITY:
         print('loading precomputed visibility from file...')
@@ -91,16 +96,25 @@ def main(raw_args=None):
 
     tt = time.perf_counter()
     with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-        pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
+        pvs_result = list(executor.map(PVS_DFS, repeat(sect_graph), repeat(portal_coords), range(n_sectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
     reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
-    for i in range(n_subsectors):
-        si = ssect_2_sect[i]
-        for j in pvs_result[i]:
-            sj = ssect_2_sect[j]
+    for si in range(n_sectors):
+        for sj in pvs_result[si]:
             reject_out[si,sj] = IS_VISIBLE
             reject_out[sj,si] = IS_VISIBLE
-    del pvs_result
     print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
+
+    ####tt = time.perf_counter()
+    ####with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+    ####    pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
+    ####reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
+    ####for i in range(n_subsectors):
+    ####    si = ssect_2_sect[i]
+    ####    for j in pvs_result[i]:
+    ####        sj = ssect_2_sect[j]
+    ####        reject_out[si,sj] = IS_VISIBLE
+    ####        reject_out[sj,si] = IS_VISIBLE
+    ####print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
 
     write_reject(reject_out, OUT_REJECT)
 
@@ -120,7 +134,7 @@ def main(raw_args=None):
         for ssect_to_plot in range(n_subsectors):
             segs_to_plot_copy = copy.deepcopy(segs_to_plot)
             for ssi,ssect in enumerate(ssect_list):
-                if ssi in results_dict[ssect_to_plot]:
+                if ssi in pvs_result[ssect_to_plot]:
                     my_segs = segs_list[ssect[1]:ssect[1]+ssect[0]]
                     for si,seg in enumerate(my_segs):
                         if ssi == ssect_to_plot:

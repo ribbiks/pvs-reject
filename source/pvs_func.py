@@ -104,8 +104,14 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
             if new_target is None:
                 continue
         visited[node] = True
+        # if we've previously analyzed this subsector, we can ask whether or not it sees anything we haven't visited
+        #nothing_new = False
+        #if nothing_new:
+        #    continue
+        #
         path_nodes = {n[0]:True for n in path}
         for neighbor in [n for n in ssect_graph[node] if n[0] not in path_nodes]:
+            # can every portal in our path thus far potentially see the portal into this neighbor?
             all_cansee = True
             portal_j = neighbor[1]
             for (_, portal_i) in path:
