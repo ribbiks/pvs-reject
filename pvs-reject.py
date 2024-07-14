@@ -17,6 +17,7 @@ def main(raw_args=None):
     parser.add_argument('-r', type=str, required=True,  metavar='REJECT.lmp', help="* Output reject table lmp")
     parser.add_argument('-v', type=str, required=False, metavar='vis.npz',    help="Load precomputed visibility matrix", default='')
     parser.add_argument('-p', type=int, required=False, metavar='4',          help="Number of processes to use", default=4)
+    parser.add_argument('--sector-dfs', required=False, action='store_true',  help="Use sector portals instead of subsectors", default=False)
     parser.add_argument('--save-vis',   required=False, action='store_true',  help="Save precomputed visibility matrix", default=False)
     parser.add_argument('--plot-rej',   required=False, action='store_true',  help="Plot reject (for debugging)", default=False)
     parser.add_argument('--plot-ssect', required=False, action='store_true',  help="Plot subsectors (for debugging)", default=False)
@@ -28,7 +29,7 @@ def main(raw_args=None):
     OUT_REJECT = args.r
     LOAD_VISIBILITY = args.v
     NUM_PROCESSES = args.p
-    SECTOR_MODE = False
+    SECTOR_MODE = args.sector_dfs
     SAVE_VISIBILITY = args.save_vis
     PLOT_REJECT = args.plot_rej
     PLOT_SSECT = args.plot_ssect
