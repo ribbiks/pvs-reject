@@ -41,9 +41,6 @@ def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress
                         cantsee = True
                 else:
                     cantsee = True
-                #
-                if [portal_i,portal_j] == [2,35] or [portal_i,portal_j] == [35,2]:
-                    print('WHATTTTTTTT', portal_i, portal_j, ssi, ssj, cantsee)
                 if cantsee:
                     ind = (portal_i*n_portals + portal_j) // 8
                     bit = (portal_i*n_portals + portal_j) % 8
@@ -110,7 +107,7 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
     stack = [(starting_node, [], None)]
     while stack:
         (node, path, previous_target) = stack.pop()
-        print(starting_node, node, len(path), path, previous_target)
+        #print(starting_node, node, len(path), path, previous_target)
         new_target = None
         if len(path) >= 3:
             portal_source = [portal_coords[path[0][1],0:2], portal_coords[path[0][1],2:4]]
@@ -139,7 +136,7 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
                 if portal_cantsee[ind] & (1 << bit):
                     all_cansee = False
                     break
-            print('-', neighbor, all_cansee)
+            #print('-', neighbor, all_cansee)
             if all_cansee:
                 stack.append((neighbor[0], path+[neighbor], new_target))
     if print_progress:

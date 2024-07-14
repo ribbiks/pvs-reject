@@ -90,16 +90,9 @@ def main(raw_args=None):
                 for i in range(0,len(ib_list),2):
                     portal_cantsee[ib_list[i]] |= ib_list[i+1]
             del cantsee_result
-            ind = (2*n_portals + 35) // 8
-            bit = (2*n_portals + 35) % 8
-            print('-z-', portal_cantsee[ind] & (1 << bit))
         if SAVE_VISIBILITY:
             np.savez_compressed(f'{OUT_REJECT}.npz', portal_cantsee=portal_cantsee)
         print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
-
-    ind = (2*n_portals + 35) // 8
-    bit = (2*n_portals + 35) % 8
-    print('-Z-', portal_cantsee[ind] & (1 << bit))
 
     ####tt = time.perf_counter()
     ####with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
@@ -111,17 +104,9 @@ def main(raw_args=None):
     ####        reject_out[sj,si] = IS_VISIBLE
     ####print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
 
-    TEST_IND = 1
-    pvs_result = [[] for n in range(n_subsectors)]
-    pvs_result[TEST_IND] = PVS_DFS(ssect_graph, portal_coords, TEST_IND, portal_cantsee, PRINT_PROGRESS)
-    print(pvs_result[TEST_IND])
-    print(ssect_graph[1])
-    print(ssect_graph[7])
-    print(ssect_graph[9])
-
     tt = time.perf_counter()
-    ####with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-    ####    pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
+    with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+        pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
     reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
     for i in range(n_subsectors):
         si = ssect_2_sect[i]
@@ -146,7 +131,7 @@ def main(raw_args=None):
     #
     if PLOT_SSECT:
         tt = time.perf_counter()
-        for ssect_to_plot in [TEST_IND]:#range(n_subsectors):
+        for ssect_to_plot in range(n_subsectors):
             segs_to_plot_copy = copy.deepcopy(segs_to_plot)
             for ssi,ssect in enumerate(ssect_list):
                 my_segs = segs_list[ssect[1]:ssect[1]+ssect[0]]
@@ -158,7 +143,7 @@ def main(raw_args=None):
                         if ssi != ssect_to_plot:
                             segs_to_plot_copy.append([[seg[0], seg[1]], [1,0,0,1], 1.0])
             #
-            fig = mpl.figure(1, figsize=(10,10), dpi=100)
+            fig = mpl.figure(1, figsize=(10,10), dpi=200)
             lines  = [n[0] for n in segs_to_plot_copy]
             clines = [n[1] for n in segs_to_plot_copy]
             widths = [n[2] for n in segs_to_plot_copy]
