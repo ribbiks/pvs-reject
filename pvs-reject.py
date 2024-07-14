@@ -4,13 +4,10 @@ import copy
 import numpy as np
 import time
 
-from concurrent.futures import ProcessPoolExecutor
-from itertools import repeat
+from concurrent.futures import as_completed, ProcessPoolExecutor
 
 from source.pvs_func import precompute_portal_visibility, PVS_DFS
 from source.wad_func import *
-
-PPV_BATCHSIZE = 50
 
 
 def main(raw_args=None):
@@ -31,6 +28,7 @@ def main(raw_args=None):
     OUT_REJECT = args.r
     LOAD_VISIBILITY = args.v
     NUM_PROCESSES = args.p
+    SECTOR_MODE = False
     SAVE_VISIBILITY = args.save_vis
     PLOT_REJECT = args.plot_rej
     PLOT_SSECT = args.plot_ssect
@@ -82,39 +80,53 @@ def main(raw_args=None):
     else:
         tt = time.perf_counter()
         portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
-        for ssi_start in range(0, n_subsectors, PPV_BATCHSIZE):
-            my_ssi = range(ssi_start, min(ssi_start+PPV_BATCHSIZE, n_subsectors))
-            with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-                cantsee_result = list(executor.map(precompute_portal_visibility, repeat(ssect_graph), repeat(portal_coords), my_ssi, repeat(PRINT_PROGRESS)))
-            for ib_list in cantsee_result:
-                for i in range(0,len(ib_list),2):
-                    portal_cantsee[ib_list[i]] |= ib_list[i+1]
-            del cantsee_result
+        with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+            futures = [executor.submit(precompute_portal_visibility, ssect_graph, portal_coords, n, PRINT_PROGRESS) for n in range(n_subsectors)]
+            for future in as_completed(futures):
+                ib_dict = future.result()
+                for ind in ib_dict.keys():
+                    for bit in ib_dict[ind]:
+                        portal_cantsee[ind] |= bit
         if SAVE_VISIBILITY:
             np.savez_compressed(f'{OUT_REJECT}.npz', portal_cantsee=portal_cantsee)
         print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
 
-    ####tt = time.perf_counter()
-    ####with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-    ####    pvs_result = list(executor.map(PVS_DFS, repeat(sect_graph), repeat(portal_coords), range(n_sectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
-    ####reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
-    ####for si in range(n_sectors):
-    ####    for sj in pvs_result[si]:
-    ####        reject_out[si,sj] = IS_VISIBLE
-    ####        reject_out[sj,si] = IS_VISIBLE
-    ####print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
-
-    tt = time.perf_counter()
-    with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-        pvs_result = list(executor.map(PVS_DFS, repeat(ssect_graph), repeat(portal_coords), range(n_subsectors), repeat(portal_cantsee), repeat(PRINT_PROGRESS)))
-    reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
-    for i in range(n_subsectors):
-        si = ssect_2_sect[i]
-        for j in pvs_result[i]:
-            sj = ssect_2_sect[j]
-            reject_out[si,sj] = IS_VISIBLE
-            reject_out[sj,si] = IS_VISIBLE
-    print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
+    #
+    # sector-based portal visibility (approximate, faster)
+    #
+    if SECTOR_MODE:
+        tt = time.perf_counter()
+        pvs_result = [[] for _ in range(n_sectors)]
+        with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+            futures = [executor.submit(PVS_DFS, sect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in range(n_sectors)]
+            for future in as_completed(futures):
+                (my_si, my_visited) = future.result()
+                pvs_result[my_si] = my_visited
+        reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
+        for si in range(n_sectors):
+            for sj in pvs_result[si]:
+                reject_out[si,sj] = IS_VISIBLE
+                reject_out[sj,si] = IS_VISIBLE
+        print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
+    #
+    # subsector-based portal visibility (accurate, slower)
+    #
+    else:
+        tt = time.perf_counter()
+        pvs_result = [[] for _ in range(n_subsectors)]
+        with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+            futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in range(n_subsectors)]
+            for future in as_completed(futures):
+                (my_ssi, my_visited) = future.result()
+                pvs_result[my_ssi] = my_visited
+        reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
+        for i in range(n_subsectors):
+            si = ssect_2_sect[i]
+            for j in pvs_result[i]:
+                sj = ssect_2_sect[j]
+                reject_out[si,sj] = IS_VISIBLE
+                reject_out[sj,si] = IS_VISIBLE
+        print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
 
     write_reject(reject_out, OUT_REJECT)
 

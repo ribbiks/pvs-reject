@@ -6,7 +6,7 @@ EPSILON = 0.1
 
 def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress=False):
     n_portals = portal_coords.shape[0]
-    tuples_out = []
+    dict_out = {}
     tt = time.perf_counter()
     for (_, portal_i) in ssect_graph[ssi]:
         pi_p1 = portal_coords[portal_i,0:2]
@@ -44,11 +44,12 @@ def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress
                 if cantsee:
                     ind = (portal_i*n_portals + portal_j) // 8
                     bit = (portal_i*n_portals + portal_j) % 8
-                    tuples_out.append(ind)
-                    tuples_out.append(1 << bit)
+                    if ind not in dict_out:
+                        dict_out[ind] = []
+                    dict_out[ind].append(1 << bit)
     if print_progress:
         print(f'[precompute_portal_visibility] subsector {ssi}: {int(time.perf_counter() - tt)} sec')
-    return tuples_out
+    return dict_out
 
 
 def clip_target(tar, plane, plane_dist):
@@ -100,7 +101,7 @@ def clip_to_separators(p_source, p_pass, p_target):
     return out_target
 
 
-def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_progress=False):
+def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, results_thus_far=None, print_progress=False):
     tt = time.perf_counter()
     n_portals = portal_coords.shape[0]
     visited = {}
@@ -121,9 +122,14 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
                 continue
         visited[node] = True
         # if we've previously analyzed this subsector, we can ask whether or not it sees anything we haven't visited
-        #nothing_new = False
-        #if nothing_new:
-        #    continue
+        if results_thus_far is not None and results_thus_far[node]:
+            nothing_new = True
+            for visible_node in results_thus_far[node]:
+                if visible_node not in visited:
+                    nothing_new = False
+                    break
+            if nothing_new:
+                continue
         #
         path_nodes = {n[0]:True for n in path}
         for neighbor in [n for n in ssect_graph[node] if n[0] not in path_nodes]:
@@ -141,4 +147,4 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
                 stack.append((neighbor[0], path+[neighbor], new_target))
     if print_progress:
         print(f'[PVS_DFS] subsector {starting_node}: {int(time.perf_counter() - tt)} sec')
-    return sorted(visited.keys())
+    return (starting_node, sorted(visited.keys()))
