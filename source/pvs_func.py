@@ -6,8 +6,6 @@ EPSILON = 0.1
 
 def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress=False):
     n_portals = portal_coords.shape[0]
-    print(n_portals)
-    exit(1)
     tuples_out = []
     tt = time.perf_counter()
     for (_, portal_i) in ssect_graph[ssi]:
