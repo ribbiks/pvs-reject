@@ -6,13 +6,20 @@ EPSILON = 0.1
 
 def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress=False):
     n_portals = portal_coords.shape[0]
+    print(n_portals)
+    exit(1)
     tuples_out = []
     tt = time.perf_counter()
     for (_, portal_i) in ssect_graph[ssi]:
         pi_p1 = portal_coords[portal_i,0:2]
         pi_p2 = portal_coords[portal_i,2:4]
         v1 = pi_p2 - pi_p1
-        plane = [-v1[1], v1[0]]
+        plane = np.array([-v1[1], v1[0]], dtype='float')
+        length = plane[0] * plane[0] + plane[1] * plane[1]
+        if length < EPSILON: # invalid plane
+            continue
+        length = 1 / np.sqrt(length)
+        plane *= length
         mid = (pi_p1 + pi_p2)/2.0
         for ssj in range(len(ssect_graph)):
             if ssi == ssj:
@@ -21,15 +28,29 @@ def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress
                 pj_p1 = portal_coords[portal_j,0:2]
                 pj_p2 = portal_coords[portal_j,2:4]
                 test_p1 = np.dot(plane, pj_p1 - mid)
-                if test_p1 > EPSILON:
-                    continue
                 test_p2 = np.dot(plane, pj_p2 - mid)
-                if test_p2 > EPSILON:
-                    continue
-                ind = (portal_i*n_portals + portal_j) // 8
-                bit = (portal_i*n_portals + portal_j) % 8
-                tuples_out.append(ind)
-                tuples_out.append(1 << bit)
+                cantsee = False
+                if test_p1 > EPSILON or test_p2 > EPSILON: # portal_j is on the right side of portal_i
+                    v2 = pj_p2 - pj_p1
+                    plane2 = np.array([-v2[1], v2[0]], dtype='float')
+                    length2 = plane2[0] * plane2[0] + plane2[1] * plane2[1]
+                    if length2 < EPSILON: # invalid plane
+                        continue
+                    length2 = 1 / np.sqrt(length2)
+                    plane2 *= length2
+                    test_v2 = abs(plane2[0] + plane[0]) + abs(plane2[1] + plane[1])
+                    if test_v2 < EPSILON: # portal_j is facing opposite direction of portal_i
+                        cantsee = True
+                else:
+                    cantsee = True
+                #
+                if [portal_i,portal_j] == [2,35] or [portal_i,portal_j] == [35,2]:
+                    print('WHATTTTTTTT', portal_i, portal_j, ssi, ssj, cantsee)
+                if cantsee:
+                    ind = (portal_i*n_portals + portal_j) // 8
+                    bit = (portal_i*n_portals + portal_j) % 8
+                    tuples_out.append(ind)
+                    tuples_out.append(1 << bit)
     if print_progress:
         print(f'[precompute_portal_visibility] subsector {ssi}: {int(time.perf_counter() - tt)} sec')
     return tuples_out
@@ -91,7 +112,7 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
     stack = [(starting_node, [], None)]
     while stack:
         (node, path, previous_target) = stack.pop()
-        #print(node, len(path), path, previous_target)
+        print(starting_node, node, len(path), path, previous_target)
         new_target = None
         if len(path) >= 3:
             portal_source = [portal_coords[path[0][1],0:2], portal_coords[path[0][1],2:4]]
@@ -120,6 +141,7 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, print_
                 if portal_cantsee[ind] & (1 << bit):
                     all_cansee = False
                     break
+            print('-', neighbor, all_cansee)
             if all_cansee:
                 stack.append((neighbor[0], path+[neighbor], new_target))
     if print_progress:

@@ -1,7 +1,6 @@
 import numpy as np
 from struct import unpack
 
-BITMASKS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
 IS_VISIBLE = 0
 IS_INVISIBLE = 1
 
@@ -210,6 +209,10 @@ def get_portal_segs(segs_list, ssect_list, line_list, side_list):
             if seg[4] != 0xffffffff:
                 partner_ssi = seg_2_ssect[seg[4]]
                 #partner_sector = ssect_2_sect[partner_ssi]
+                v = [seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]]
+                length = v[0] * v[0] + v[1] * v[1]
+                if length < 1: # invalid seg
+                    continue
                 portal_ssects.append([ssi, partner_ssi])
                 portal_coords.append(seg[0] + seg[1])
                 segs_to_plot.append([[seg[0], seg[1]], [0,1,1,1], 0.5])
