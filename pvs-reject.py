@@ -6,7 +6,7 @@ import time
 
 from concurrent.futures import as_completed, ProcessPoolExecutor
 
-from source.pvs_func import precompute_portal_visibility, PVS_DFS
+from source.pvs_func import count_neighbors, precompute_portal_visibility, PVS_DFS
 from source.wad_func import *
 
 
@@ -45,9 +45,13 @@ def main(raw_args=None):
     side_list = get_sidedefs(map_data)
     sect_list = get_sectors(map_data)
     normal_verts = get_vertexes(map_data)
-    gl_verts = get_gl_verts(map_data)
-    ssect_list = get_gl_subsectors(map_data)
-    segs_list = get_gl_segs_with_coordinates(map_data, normal_verts, gl_verts)
+    try:
+        gl_verts = get_gl_verts(map_data)
+        ssect_list = get_gl_subsectors(map_data)
+        segs_list = get_gl_segs_with_coordinates(map_data, normal_verts, gl_verts)
+    except KeyError:
+        print(f'Error: {WHICH_MAP} does not have GL nodes.')
+        exit(1)
     #
     (portal_ssects, portal_coords, ssect_2_sect, segs_to_plot) = get_portal_segs(segs_list, ssect_list, line_list, side_list)
 
@@ -63,16 +67,22 @@ def main(raw_args=None):
     del gl_verts
     print(f'{n_sectors} sectors / {n_subsectors} subsectors / {n_portals} portals')
 
+    tt = time.perf_counter()
+    if SECTOR_MODE:
+        sect_graph = [[] for n in range(n_sectors)]
+        for i in range(portal_ssects.shape[0]):
+            my_sector = ssect_2_sect[portal_ssects[i,0]]
+            partner_sector = ssect_2_sect[portal_ssects[i,1]]
+            if my_sector != partner_sector:
+                sect_graph[my_sector].append((partner_sector, i))
+    #
     ssect_graph = [[] for n in range(n_subsectors)]
     for i in range(portal_ssects.shape[0]):
         ssect_graph[portal_ssects[i,0]].append((portal_ssects[i,1], i))
-
-    sect_graph = [[] for n in range(n_sectors)]
-    for i in range(portal_ssects.shape[0]):
-        my_sector = ssect_2_sect[portal_ssects[i,0]]
-        partner_sector = ssect_2_sect[portal_ssects[i,1]]
-        if my_sector != partner_sector:
-            sect_graph[my_sector].append((partner_sector, i))
+    #
+    sorted_ssect_nodes = sorted([count_neighbors(ssect_graph, n) for n in range(n_subsectors)])
+    sorted_ssect_nodes = [n[1] for n in sorted_ssect_nodes]
+    print(f'subsector graph finished: {int(time.perf_counter() - tt)} sec')
 
     if LOAD_VISIBILITY:
         print('loading precomputed visibility from file...')
@@ -93,7 +103,7 @@ def main(raw_args=None):
         print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
 
     #
-    # sector-based portal visibility (approximate, faster)
+    # sector-based portal visibility (not as accurate, but possibly faster?)
     #
     if SECTOR_MODE:
         tt = time.perf_counter()
@@ -110,13 +120,13 @@ def main(raw_args=None):
                 reject_out[sj,si] = IS_VISIBLE
         print(f'PVSs finished: {int(time.perf_counter() - tt)} sec')
     #
-    # subsector-based portal visibility (accurate, slower)
+    # subsector-based portal visibility
     #
     else:
         tt = time.perf_counter()
         pvs_result = [[] for _ in range(n_subsectors)]
         with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-            futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in range(n_subsectors)]
+            futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in sorted_ssect_nodes]
             for future in as_completed(futures):
                 (my_ssi, my_visited) = future.result()
                 pvs_result[my_ssi] = my_visited

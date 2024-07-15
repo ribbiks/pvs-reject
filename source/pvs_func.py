@@ -1,6 +1,8 @@
 import numpy as np
 import time
 
+from collections import deque
+
 EPSILON = 0.1
 
 
@@ -52,6 +54,18 @@ def precompute_portal_visibility(ssect_graph, portal_coords, ssi, print_progress
     return dict_out
 
 
+def count_neighbors(graph, starting_node, depth=3):
+    queue = deque([(starting_node, [])])
+    visited = {}
+    while queue:
+        (node, path) = queue.popleft()
+        visited[node] = True
+        if len(path) < depth:
+            for neighbor in [n for n in graph[node] if n[0] not in visited]:
+                queue.append((neighbor[0], path+[node]))
+    return (len(visited), starting_node)
+
+
 def clip_target(tar, plane, plane_dist):
     dists = [np.dot(tar[0], plane) - plane_dist, np.dot(tar[1], plane) - plane_dist]
     if dists[0] < EPSILON and dists[1] < EPSILON:
@@ -101,7 +115,7 @@ def clip_to_separators(p_source, p_pass, p_target):
     return out_target
 
 
-def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, results_thus_far=None, print_progress=False):
+def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=None, results_thus_far=None, print_progress=False):
     tt = time.perf_counter()
     n_portals = portal_coords.shape[0]
     visited = {}
@@ -135,13 +149,14 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee={}, result
         for neighbor in [n for n in ssect_graph[node] if n[0] not in path_nodes]:
             # can every portal in our path thus far potentially see the portal into this neighbor?
             all_cansee = True
-            portal_j = neighbor[1]
-            for (_, portal_i) in path:
-                ind = (portal_i*n_portals + portal_j) // 8
-                bit = (portal_i*n_portals + portal_j) % 8
-                if portal_cantsee[ind] & (1 << bit):
-                    all_cansee = False
-                    break
+            if portal_cantsee is not None:
+                portal_j = neighbor[1]
+                for (_, portal_i) in path:
+                    ind = (portal_i*n_portals + portal_j) // 8
+                    bit = (portal_i*n_portals + portal_j) % 8
+                    if portal_cantsee[ind] & (1 << bit):
+                        all_cansee = False
+                        break
             #print('-', neighbor, all_cansee)
             if all_cansee:
                 stack.append((neighbor[0], path+[neighbor], new_target))
