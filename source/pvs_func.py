@@ -115,7 +115,7 @@ def clip_to_separators(p_source, p_pass, p_target):
     return out_target
 
 
-def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=None, results_thus_far=None, print_progress=False):
+def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=None, results_thus_far=None, out_str_type=''):
     tt = time.perf_counter()
     n_portals = portal_coords.shape[0]
     visited = {}
@@ -160,6 +160,7 @@ def PVS_DFS(ssect_graph, portal_coords, starting_node, portal_cantsee=None, resu
             #print('-', neighbor, all_cansee)
             if all_cansee:
                 stack.append((neighbor[0], path+[neighbor], new_target))
-    if print_progress:
-        print(f'[PVS_DFS] subsector {starting_node}: {int(time.perf_counter() - tt)} sec')
-    return (starting_node, sorted(visited.keys()))
+    out_str = ''
+    if out_str_type:
+        out_str = f'[PVS_DFS] {out_str_type} {starting_node}: {int(time.perf_counter() - tt)} sec'
+    return (starting_node, sorted(visited.keys()), out_str)

@@ -19,6 +19,7 @@ def main(raw_args=None):
     parser.add_argument('-p', type=int, required=False, metavar='4',          help="Number of processes to use", default=4)
     parser.add_argument('--sector-dfs', required=False, action='store_true',  help="Use sector portals instead of subsectors", default=False)
     parser.add_argument('--save-vis',   required=False, action='store_true',  help="Save precomputed visibility matrix", default=False)
+    parser.add_argument('--save-pvs',   required=False, action='store_true',  help="Save PVS results are they're computed", default=False)
     parser.add_argument('--plot-rej',   required=False, action='store_true',  help="Plot reject (for debugging)", default=False)
     parser.add_argument('--plot-ssect', required=False, action='store_true',  help="Plot subsectors (for debugging)", default=False)
     parser.add_argument('--progress',   required=False, action='store_true',  help="Print PVS progress to console", default=False)
@@ -31,6 +32,7 @@ def main(raw_args=None):
     NUM_PROCESSES = args.p
     SECTOR_MODE = args.sector_dfs
     SAVE_VISIBILITY = args.save_vis
+    SAVE_PVS = args.save_pvs
     PLOT_REJECT = args.plot_rej
     PLOT_SSECT = args.plot_ssect
     PRINT_PROGRESS = args.progress
@@ -82,7 +84,6 @@ def main(raw_args=None):
     ssect_graph = [[] for n in range(n_subsectors)]
     for i in range(portal_ssects.shape[0]):
         ssect_graph[portal_ssects[i,0]].append((portal_ssects[i,1], i))
-    #
     sorted_ssect_nodes = sorted([count_neighbors(ssect_graph, n) for n in range(n_subsectors)])
     sorted_ssect_nodes = [n[1] for n in sorted_ssect_nodes]
     print(f'subsector graph finished: {int(time.perf_counter() - tt)} sec')
@@ -108,6 +109,9 @@ def main(raw_args=None):
         print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
         print(f' - {portal_cantsee.shape[0]} bytes')
 
+    if SAVE_PVS:
+        f = open(f'{OUT_REJECT}.pvs', 'w')
+        f.close()
     #
     # sector-based portal visibility (not as accurate, but possibly faster?)
     #
@@ -115,9 +119,9 @@ def main(raw_args=None):
         tt = time.perf_counter()
         pvs_result = [[] for _ in range(n_sectors)]
         with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-            futures = [executor.submit(PVS_DFS, sect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in range(n_sectors)]
+            futures = [executor.submit(PVS_DFS, sect_graph, portal_coords, n, portal_cantsee, pvs_result, 'sector'*PRINT_PROGRESS) for n in range(n_sectors)]
             for future in as_completed(futures):
-                (my_si, my_visited) = future.result()
+                (my_si, my_visited, progress_str) = future.result()
                 pvs_result[my_si] = my_visited
         reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
         for si in range(n_sectors):
@@ -133,13 +137,16 @@ def main(raw_args=None):
         ssect_processed_thus_far = 0
         pvs_result = [[] for _ in range(n_subsectors)]
         with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
-            futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in sorted_ssect_nodes]
+            futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, 'subsector'*PRINT_PROGRESS) for n in sorted_ssect_nodes]
             for future in as_completed(futures):
-                (my_ssi, my_visited) = future.result()
+                (my_ssi, my_visited, progress_str) = future.result()
                 pvs_result[my_ssi] = my_visited
+                if SAVE_PVS:
+                    with open(f'{OUT_REJECT}.pvs', 'a') as f:
+                        f.write(str(my_ssi) + '\t' + ','.join([str(n) for n in my_visited]) + '\n')
                 ssect_processed_thus_far += 1
                 if PRINT_PROGRESS:
-                    print(f' - {ssect_processed_thus_far} / {n_subsectors}')
+                    print(f'{progress_str} ({ssect_processed_thus_far}/{n_subsectors})')
         reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
         for i in range(n_subsectors):
             si = ssect_2_sect[i]
