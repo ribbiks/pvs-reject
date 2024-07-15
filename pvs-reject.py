@@ -40,6 +40,9 @@ def main(raw_args=None):
         from matplotlib import collections as mc
 
     map_data = get_map_lmps(IN_WAD, WHICH_MAP)
+    if not map_data:
+        print(f'Error: {WHICH_MAP} not found.')
+        exit(1)
 
     line_list = get_linedefs(map_data)
     side_list = get_sidedefs(map_data)
@@ -85,9 +88,11 @@ def main(raw_args=None):
     print(f'subsector graph finished: {int(time.perf_counter() - tt)} sec')
 
     if LOAD_VISIBILITY:
-        print('loading precomputed visibility from file...')
+        tt = time.perf_counter()
         in_npz = np.load(LOAD_VISIBILITY)
         portal_cantsee = in_npz['portal_cantsee']
+        print(f'precomputed visibility loaded from file: {int(time.perf_counter() - tt)} sec')
+        print(f' - {portal_cantsee.shape[0]} bytes')
     else:
         tt = time.perf_counter()
         portal_cantsee = np.zeros(((n_portals*n_portals)//8 + 1), dtype='B')
@@ -101,6 +106,7 @@ def main(raw_args=None):
         if SAVE_VISIBILITY:
             np.savez_compressed(f'{OUT_REJECT}.npz', portal_cantsee=portal_cantsee)
         print(f'portal visibility precomputation finished: {int(time.perf_counter() - tt)} sec')
+        print(f' - {portal_cantsee.shape[0]} bytes')
 
     #
     # sector-based portal visibility (not as accurate, but possibly faster?)
@@ -124,12 +130,16 @@ def main(raw_args=None):
     #
     else:
         tt = time.perf_counter()
+        ssect_processed_thus_far = 0
         pvs_result = [[] for _ in range(n_subsectors)]
         with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
             futures = [executor.submit(PVS_DFS, ssect_graph, portal_coords, n, portal_cantsee, pvs_result, PRINT_PROGRESS) for n in sorted_ssect_nodes]
             for future in as_completed(futures):
                 (my_ssi, my_visited) = future.result()
                 pvs_result[my_ssi] = my_visited
+                ssect_processed_thus_far += 1
+                if PRINT_PROGRESS:
+                    print(f' - {ssect_processed_thus_far} / {n_subsectors}')
         reject_out = np.zeros((n_sectors, n_sectors), dtype='bool') + IS_INVISIBLE
         for i in range(n_subsectors):
             si = ssect_2_sect[i]
